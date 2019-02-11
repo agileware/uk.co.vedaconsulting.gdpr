@@ -151,7 +151,7 @@
     </div>
     <div class="clear"></div>
   </div> {* end Completion block *}
- </div>{* end form *}
+ {* end form *}
 
 {* FOOTER *}
 <div class="crm-submit-buttons">
