@@ -264,7 +264,7 @@ function gdpr_civicrm_buildForm($formName, $form) {
       );
 
       //amend communication preference link/embed form in thank you page
-      CRM_Gdpr_CommunicationsPreferences_Utils::commsPreferenceInThankyouPage($cid, $form, 'Event');  
+      CRM_Gdpr_CommunicationsPreferences_Utils::commsPreferenceInThankyouPage($cid, $form, 'Event');
     }
   }
   if ($formName == 'CRM_Contribute_Form_Contribution_Main') {
@@ -311,20 +311,26 @@ function gdpr_civicrm_buildForm($formName, $form) {
       CRM_Utils_System::redirect($commsPrefsUrl);
     }
   }
+
+  gdpr_includeShoreditchStylingIfEnabled();
 }
 
 /**
  * Implements hook_civicrm_postProcess().
  */
 function gdpr_civicrm_postProcess($formName, $form) {
-  if ($formName == 'CRM_Contribute_Form_Contribution_Confirm') {
+  //When Membership and Monetary is enabled on contribution page, then expecting the hook should be called twice on submission.
+  //we should not duplicate the data policy and T&C acceptance.
+  //it might be core bug, but incase we should avoid duplication
+  if ($formName == 'CRM_Contribute_Form_Contribution_Confirm' && empty($form->_params['gdprAccepted'])) {
     $contact_id = $form->_contactID;
     $contribution_page_id = $form->_id;
     if ($contact_id && $contribution_page_id) {
       $tc = new CRM_Gdpr_SLA_ContributionPage($contribution_page_id);
       if ($tc->isEnabled(TRUE)) {
         $tc->recordAcceptance($contact_id);
-        CRM_Gdpr_SLA_Utils::recordSLAAcceptance($contact_id);
+	CRM_Gdpr_SLA_Utils::recordSLAAcceptance($contact_id);
+	$form->_params['gdprAccepted'] = TRUE;
       }
     }
   }
@@ -376,7 +382,7 @@ function gdpr_civicrm_export($exportTempTable, $headerRows, $sqlColumns, $export
   if (version_compare(CRM_Utils_System::version(), '5.8.0', '>=')) {
     switch ($exportMode) {
       case CRM_Export_Form_Select::CONTACT_EXPORT:
-        CRM_Gdpr_Export::contact($componentTable);
+        CRM_Gdpr_Export::contact($ids);
         break;
 
       case CRM_Export_Form_Select::ACTIVITY_EXPORT:
@@ -497,8 +503,8 @@ function gdpr_civicrm_navigationMenu( &$params ) {
  * implementation of hook_civicrm_token
  */
 function gdpr_civicrm_tokens( &$tokens ){
-  //Keeping this token only to sustain the old tokens otherwise, 
-  //the token 'CommunicationPreferences' can be used in all places  
+  //Keeping this token only to sustain the old tokens otherwise,
+  //the token 'CommunicationPreferences' can be used in all places
   $tokens['contact']['contact.comm_pref_supporter_url'] = E::ts("Communication Preferences URL");
   $tokens['contact']['contact.comm_pref_supporter_link'] = E::ts("Communication Preferences Link");
   $tokens['CommunicationPreferences'] = array(
@@ -515,20 +521,20 @@ function gdpr_civicrm_tokenValues(&$values, $cids, $job = null, $tokens = array(
     /*
     THIS CHANGE IS ONLY FOR ACTIONSCHEDULE (SEND EMAIL USING SCHEDULE REMINDER)
 
-    we have mentioned the contact custom tokens in token hook. 
-    so whenever replaceHookToken called its trying replace Category 'Contact' tokens 
+    we have mentioned the contact custom tokens in token hook.
+    so whenever replaceHookToken called its trying replace Category 'Contact' tokens
     (which cause null values in template result).
 
-    This is not happening when send email via contact summary or mailing, 
-    because all other work flow to send emails are builds the contact details array 
+    This is not happening when send email via contact summary or mailing,
+    because all other work flow to send emails are builds the contact details array
     before replaceHookToken fired using this function CRM_Utils_Token::getTokenDetails().
-    
-    When Action schedule send email, Contact Details get from BAO API Query 
-    which doesn't return some default contact values ex: email_greetings, 
+
+    When Action schedule send email, Contact Details get from BAO API Query
+    which doesn't return some default contact values ex: email_greetings,
     postal greetings etc. So build the contact details array with all default values.
-    
-    This changes is needed only when we have $tokens['contact']. Keeping this oly to sustain 
-    the old token. 
+
+    This changes is needed only when we have $tokens['contact']. Keeping this oly to sustain
+    the old token.
     IN FUTURE or V3.0, WE CAN REMOVE THIS CHANGE ALONG WITH CONTACT CUSTOM TOKEN ABOVE.
     */
     $tokenValues = array();
@@ -561,40 +567,30 @@ function gdpr_civicrm_tokenValues(&$values, $cids, $job = null, $tokens = array(
 function gdpr_civicrm_summaryActions( &$actions, $contactID ) {
   $actions['comm_pref'] = array(
     'title' => 'Communication Preferences Link',
-    //need a weight parameter here, Contact BAO looking for weight key and returning notice message. 
-    'weight' => 60, 
+    //need a weight parameter here, Contact BAO looking for weight key and returning notice message.
+    'weight' => 60,
     'ref' => 'comm_pref',
     'key' => 'comm_pref',
     'href' => CRM_Gdpr_CommunicationsPreferences_Utils::getCommPreferenceURLForContact($contactID, TRUE),
-  );  
+  );
 }
 
 function gdpr_civicrm_permission(&$permissions) {
-  $prefix = E::ts('GDPR') . ': ';
-  $version = CRM_Utils_System::version();
-  if (version_compare($version, '4.6.1') >= 0) {
-    $permissions += array(
-      'access GDPR' => array(
-        $prefix . E::ts('access GDPR'),
-        E::ts('View GDPR related information'),
-      ),
-      'forget contact' => array(
-        $prefix . E::ts('forget contact'),
-        E::ts('Anonymize contacts'),
-      ),
-      'administer GDPR' => array(
-        $prefix . E::ts('administer GDPR'),
-        E::ts('Manage GDPR settings'),
-      ),
-    );
-  }
-  else {
-    $permissions += array(
-      'access GDPR' => $prefix . E::ts('access GDPR'),
-      'forget contact' => $prefix . E::ts('forget contact'),
-      'administer GDPR' => $prefix . E::ts('administer GDPR'),
-    );
-  }
+  $prefix = E::ts('CiviGDPR') . ': ';
+  $permissions += array(
+    'access GDPR' => array(
+      $prefix . E::ts('access GDPR'),
+      E::ts('View GDPR related information'),
+    ),
+    'forget contact' => array(
+      $prefix . E::ts('forget contact'),
+      E::ts('Anonymize contacts'),
+    ),
+    'administer GDPR' => array(
+      $prefix . E::ts('administer GDPR'),
+      E::ts('Manage GDPR settings'),
+    ),
+  );
 }
 
 /**
@@ -620,6 +616,40 @@ function gdpr_civicrm_pageRun( &$page ) {
   if ($pageName == 'CRM_Event_Page_EventInfo') {
     CRM_Core_Resources::singleton()->addStyleFile('uk.co.vedaconsulting.gdpr', 'css/gdpr.css');
   }
+
+  gdpr_includeShoreditchStylingIfEnabled();
+}
+
+/**
+ * Checks if an extension is enabled
+ *
+ * @param string $key
+ *   extension key
+ *
+ * @return bool
+ */
+function gdpr_isExtensionEnabled($key) {
+  $isEnabled = CRM_Core_DAO::getFieldValue(
+    'CRM_Core_DAO_Extension',
+    $key,
+    'is_active',
+    'full_name'
+  );
+  return !empty($isEnabled);
+}
+
+/**
+ * Includes Shoreditch styling for the extension, if Shoreditch is enabled
+ *
+ * @return void
+ */
+function gdpr_includeShoreditchStylingIfEnabled () {
+  if (!gdpr_isExtensionEnabled('org.civicrm.shoreditch')) {
+    return;
+  }
+
+  CRM_Core_Resources::singleton()->
+    addStyleFile('uk.co.vedaconsulting.gdpr', 'css/shoreditch-only.min.css', 10);
 }
 
 /**
